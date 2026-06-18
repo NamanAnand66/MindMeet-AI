@@ -4,7 +4,12 @@ import { calculateSpeakingTime, transcriptToText } from "../utils/transcript.js"
 import { transcribeRecordingUrl } from "./deepgramService.js";
 import { extractActionItems, summarizeMeeting } from "./llmRouter.js";
 import { indexMeetingTranscript } from "./ragService.js";
-import { deleteRecording, uploadRecording } from "./storageService.js";
+import {
+  createRecordingReadUrl,
+  createRecordingUploadUrl,
+  deleteRecording,
+  uploadRecording
+} from "./storageService.js";
 
 export const createMeeting = async ({ title = "Untitled meeting", source = "upload", status = "processing" }) => {
   const supabase = getSupabase();
@@ -83,13 +88,105 @@ export const processUploadedMeeting = async ({ file, title }) => {
   }
 };
 
+export const prepareUploadedMeeting = async ({ title, filename }) => {
+  const meeting = await createMeeting({ title: title || filename, source: "upload" });
+
+  try {
+    const upload = await createRecordingUploadUrl({
+      meetingId: meeting.id,
+      filename
+    });
+
+    return {
+      meetingId: meeting.id,
+      path: upload.path,
+      signedUrl: upload.signedUrl,
+      token: upload.token
+    };
+  } catch (error) {
+    const supabase = getSupabase();
+    await supabase.from("meetings").delete().eq("id", meeting.id);
+    throw error;
+  }
+};
+
+export const processStoredMeeting = async ({ meetingId, path }) => {
+  const supabase = getSupabase();
+  const { data: meeting, error: meetingError } = await supabase
+    .from("meetings")
+    .select("id,status")
+    .eq("id", meetingId)
+    .eq("source", "upload")
+    .single();
+
+  if (meetingError || !meeting) {
+    throw new AppError("Prepared meeting not found.", 404, meetingError?.message);
+  }
+
+  try {
+    const signedUrl = await createRecordingReadUrl(path);
+    const transcription = await transcribeRecordingUrl(signedUrl);
+    const transcriptText = transcription.text || transcriptToText(transcription.segments);
+
+    if (!transcriptText.trim()) {
+      throw new AppError("Deepgram returned an empty transcript for this recording.", 422);
+    }
+
+    const [{ summary }, { actionItems }] = await Promise.all([
+      summarizeMeeting(transcriptText),
+      extractActionItems(transcriptText)
+    ]);
+
+    const speakingTime = calculateSpeakingTime(transcription.segments);
+    const operations = [
+      supabase.from("meetings").update({
+        status: "completed",
+        storage_path: path,
+        duration_seconds: transcription.durationSeconds
+      }).eq("id", meetingId),
+      supabase.from("transcripts").insert({
+        meeting_id: meetingId,
+        provider: transcription.provider,
+        text: transcriptText,
+        segments: transcription.segments,
+        raw_response: transcription.raw
+      }),
+      supabase.from("summaries").insert({
+        meeting_id: meetingId,
+        content: summary
+      }),
+      actionItems.length
+        ? supabase.from("action_items").insert(actionItems.map((item) => ({ ...item, meeting_id: meetingId })))
+        : Promise.resolve({ error: null }),
+      supabase.from("analytics").insert({
+        meeting_id: meetingId,
+        speaking_time_by_speaker: speakingTime,
+        recurring_topics: summary.discussionPoints?.slice(0, 6) ?? []
+      })
+    ];
+
+    const results = await Promise.all(operations);
+    const failed = results.find((result) => result.error);
+    if (failed) {
+      throw new AppError("Failed to persist meeting intelligence.", 502, failed.error.message);
+    }
+
+    await indexMeetingTranscript({ meetingId, transcriptText });
+    return getMeetingById(meetingId);
+  } catch (error) {
+    await deleteRecording(path);
+    await supabase.from("meetings").delete().eq("id", meetingId);
+    throw error;
+  }
+};
+
 export const getMeetingById = async (meetingId) => {
   const supabase = getSupabase();
   const { data, error } = await supabase
     .from("meetings")
     .select(`
       *,
-      transcripts(*),
+      transcripts(id, meeting_id, provider, text, segments, created_at),
       summaries(*),
       action_items(*),
       analytics(*)

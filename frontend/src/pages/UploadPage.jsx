@@ -11,16 +11,30 @@ export const UploadPage = () => {
   const [file, setFile] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [progress, setProgress] = useState(0);
+  const [phase, setPhase] = useState("idle");
 
   const submit = async (event) => {
     event.preventDefault();
     setError("");
     setLoading(true);
+    setProgress(0);
+    setPhase("uploading");
     try {
-      const meeting = await uploadRecording({ title, file });
+      const meeting = await uploadRecording({
+        title,
+        file,
+        onUploadProgress: (progressEvent) => {
+          if (!progressEvent.total) return;
+          const nextProgress = Math.round((progressEvent.loaded / progressEvent.total) * 100);
+          setProgress(nextProgress);
+          if (nextProgress >= 100) setPhase("processing");
+        }
+      });
       navigate(`/meetings/${meeting.id}`);
     } catch (uploadError) {
       setError(getApiErrorMessage(uploadError, "Unable to process this recording."));
+      setPhase("error");
     } finally {
       setLoading(false);
     }
@@ -64,9 +78,22 @@ export const UploadPage = () => {
         </label>
 
         <div className="upload-footer">
-          <p>Securely stored, transcribed, summarized, and indexed.</p>
+          <div className="upload-progress-copy">
+            <p>
+              {phase === "uploading"
+                ? `Uploading recording · ${progress}%`
+                : phase === "processing"
+                  ? "Transcribing and generating intelligence. Keep this tab open."
+                  : "Securely stored, transcribed, summarized, and indexed."}
+            </p>
+            {loading ? <div className="upload-progress-track"><span style={{ width: `${Math.max(progress, 4)}%` }} /></div> : null}
+          </div>
           <button className="workspace-button" disabled={!file || loading}>
-            {loading ? "Processing recording..." : "Generate intelligence"}
+            {phase === "uploading"
+              ? `Uploading ${progress}%`
+              : phase === "processing"
+                ? "Processing meeting..."
+                : "Generate intelligence"}
           </button>
         </div>
       </form>

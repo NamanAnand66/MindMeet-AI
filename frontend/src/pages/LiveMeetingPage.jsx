@@ -6,7 +6,7 @@ import { useLiveMeeting } from "../hooks/useLiveMeeting";
 
 export const LiveMeetingPage = () => {
   const [title, setTitle] = useState("");
-  const { meeting, segments, status, error, start, stop } = useLiveMeeting();
+  const { meeting, segments, status, error, start, stop, liveMeetingEnabled } = useLiveMeeting();
   const recording = ["starting", "recording"].includes(status);
 
   return (
@@ -42,7 +42,7 @@ export const LiveMeetingPage = () => {
           </label>
 
           <div className="live-actions">
-            <button className="workspace-button" onClick={() => start(title)} disabled={recording}>
+            <button className="workspace-button" onClick={() => start(title)} disabled={recording || !liveMeetingEnabled}>
               <Mic size={18} /> Start
             </button>
             <button className="workspace-button secondary" onClick={stop} disabled={!recording}>

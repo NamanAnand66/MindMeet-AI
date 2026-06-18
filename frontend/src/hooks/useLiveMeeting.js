@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { createMeetingSocket } from "../services/socket";
 
 export const useLiveMeeting = () => {
+  const liveMeetingEnabled =
+    String(import.meta.env.VITE_LIVE_MEETING_ENABLED ?? import.meta.env.DEV).toLowerCase() === "true";
   const socketRef = useRef(null);
   const recorderRef = useRef(null);
   const [meeting, setMeeting] = useState(null);
@@ -10,6 +12,8 @@ export const useLiveMeeting = () => {
   const [error, setError] = useState("");
 
   useEffect(() => {
+    if (!liveMeetingEnabled) return undefined;
+
     const socket = createMeetingSocket();
     socketRef.current = socket;
 
@@ -38,9 +42,17 @@ export const useLiveMeeting = () => {
       recorderRef.current?.stream?.getTracks()?.forEach((track) => track.stop());
       socket.disconnect();
     };
-  }, []);
+  }, [liveMeetingEnabled]);
 
   const start = async (title) => {
+    if (!liveMeetingEnabled) {
+      setError(
+        "Live meeting mode requires a persistent WebSocket service. Vercel Functions cannot host the Socket.io connection."
+      );
+      setStatus("unavailable");
+      return;
+    }
+
     setError("");
     setSegments([]);
     setStatus("starting");
@@ -80,5 +92,5 @@ export const useLiveMeeting = () => {
     setStatus("finalizing");
   };
 
-  return { meeting, segments, status, error, start, stop };
+  return { meeting, segments, status, error, start, stop, liveMeetingEnabled };
 };

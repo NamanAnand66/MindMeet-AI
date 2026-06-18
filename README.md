@@ -141,6 +141,45 @@ Supabase:
 - Create a private storage bucket matching `SUPABASE_STORAGE_BUCKET`.
 - Enable pgvector before inserting transcript embeddings.
 
+## Deployment
+
+Vercel frontend settings:
+
+```text
+Root Directory: frontend
+Build Command: npm run build
+Output Directory: dist
+```
+
+Required Vercel environment variables:
+
+```env
+VITE_API_URL=https://your-backend.vercel.app/api
+VITE_LIVE_MEETING_ENABLED=false
+```
+
+Do not use `localhost` in Vercel environment variables. Redeploy after changing any `VITE_*` value because Vite embeds these variables during the build.
+
+Vercel backend settings:
+
+```text
+Root Directory: backend
+Framework Preset: Other
+```
+
+Required backend environment configuration:
+
+```env
+NODE_ENV=production
+CLIENT_ORIGIN=https://your-frontend.vercel.app
+```
+
+Use a comma-separated `CLIENT_ORIGIN` value when both a production domain and Vercel preview domain must be allowed.
+
+The upload flow uses a signed Supabase URL. Recording bytes travel directly from the browser to Supabase Storage instead of passing through a Vercel Function, avoiding Vercel's function request body limit.
+
+Vercel Functions do not provide persistent WebSocket connections. Keep `VITE_LIVE_MEETING_ENABLED=false` when the backend is deployed only on Vercel. To enable live meeting mode, deploy the Socket.io server to a persistent service, configure `VITE_SOCKET_URL`, and set `VITE_LIVE_MEETING_ENABLED=true`.
+
 ## NVIDIA NIM
 
 Create a development API key from [NVIDIA Build](https://build.nvidia.com/) and configure:

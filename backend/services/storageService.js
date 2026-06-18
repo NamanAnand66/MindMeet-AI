@@ -82,6 +82,36 @@ export const uploadRecording = async ({ file, meetingId }) => {
   };
 };
 
+export const createRecordingUploadUrl = async ({ meetingId, filename }) => {
+  const supabase = getSupabase();
+  await ensureStorageBucket();
+
+  const safeFilename = filename.replace(/[^a-zA-Z0-9._-]/g, "-");
+  const path = `${meetingId}/${Date.now()}-${safeFilename}`;
+  const { data, error } = await supabase.storage.from(storageBucket).createSignedUploadUrl(path);
+
+  if (error) {
+    throw new AppError("Failed to create a signed recording upload URL.", 502, error.message);
+  }
+
+  return {
+    path,
+    signedUrl: data.signedUrl,
+    token: data.token
+  };
+};
+
+export const createRecordingReadUrl = async (path) => {
+  const supabase = getSupabase();
+  const { data, error } = await supabase.storage.from(storageBucket).createSignedUrl(path, 60 * 60);
+
+  if (error) {
+    throw new AppError("Failed to create recording signed URL.", 502, error.message);
+  }
+
+  return data.signedUrl;
+};
+
 export const deleteRecording = async (path) => {
   if (!path) return;
 
