@@ -203,6 +203,21 @@ export const getMeetingById = async (meetingId) => {
 
 export const startLiveMeeting = async ({ title }) => createMeeting({ title, source: "live", status: "live" });
 
+export const ensureLiveMeeting = async (meetingId) => {
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from("meetings")
+    .select("id")
+    .eq("id", meetingId)
+    .eq("source", "live")
+    .eq("status", "live")
+    .single();
+
+  if (error || !data) {
+    throw new AppError("Active live meeting not found.", 404, error?.message);
+  }
+};
+
 export const abandonLiveMeeting = async (meetingId) => {
   if (!meetingId) return;
   const supabase = getSupabase();

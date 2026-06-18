@@ -155,7 +155,7 @@ Required Vercel environment variables:
 
 ```env
 VITE_API_URL=https://your-backend.vercel.app/api
-VITE_LIVE_MEETING_ENABLED=false
+VITE_LIVE_MEETING_ENABLED=true
 ```
 
 Do not use `localhost` in Vercel environment variables. Redeploy after changing any `VITE_*` value because Vite embeds these variables during the build.
@@ -178,7 +178,9 @@ Use a comma-separated `CLIENT_ORIGIN` value when both a production domain and Ve
 
 The upload flow uses a signed Supabase URL. Recording bytes travel directly from the browser to Supabase Storage instead of passing through a Vercel Function, avoiding Vercel's function request body limit.
 
-Vercel Functions do not provide persistent WebSocket connections. Keep `VITE_LIVE_MEETING_ENABLED=false` when the backend is deployed only on Vercel. To enable live meeting mode, deploy the Socket.io server to a persistent service, configure `VITE_SOCKET_URL`, and set `VITE_LIVE_MEETING_ENABLED=true`.
+Live meeting mode works on Vercel without Socket.io. The backend issues a short-lived Deepgram token, the browser streams microphone audio directly to Deepgram, and the completed transcript is finalized through the REST meeting endpoint.
+
+Deepgram temporary tokens require an API key with Member or higher authorization. When the configured key cannot grant temporary tokens, the browser records short standalone audio slices and sends them to Deepgram through small Vercel HTTP requests. This preserves live transcript updates without exposing the permanent API key or requiring persistent backend WebSockets.
 
 ## NVIDIA NIM
 

@@ -25,3 +25,17 @@ export const audioUpload = multer({
     cb(null, true);
   }
 });
+
+export const liveAudioChunkUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 4 * 1024 * 1024
+  },
+  fileFilter: (_req, file, cb) => {
+    if (!["audio/webm", "video/webm", "audio/wav", "audio/x-wav"].includes(file.mimetype)) {
+      cb(new AppError("Live audio chunks must use WebM or WAV audio.", 400));
+      return;
+    }
+    cb(null, true);
+  }
+});

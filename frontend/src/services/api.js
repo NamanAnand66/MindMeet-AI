@@ -65,3 +65,44 @@ export const askArchive = async ({ question, meetingId }) => {
   const { data } = await api.post("/chat", { question, meetingId });
   return data.data;
 };
+
+export const startLiveMeeting = async (title) => {
+  requireApiUrl();
+  const { data } = await api.post("/meeting/start", { title });
+  return data.data;
+};
+
+export const getLiveMeetingToken = async () => {
+  requireApiUrl();
+  const { data } = await api.post("/meeting/live-token");
+  return data.data;
+};
+
+export const endLiveMeeting = async ({ meetingId, segments }) => {
+  requireApiUrl();
+  const { data } = await api.post(
+    "/meeting/end",
+    { meetingId, segments },
+    { timeout: 5 * 60 * 1000 }
+  );
+  return data.data;
+};
+
+export const cancelLiveMeeting = async (meetingId) => {
+  if (!meetingId) return;
+  requireApiUrl();
+  await api.post("/meeting/cancel", { meetingId });
+};
+
+export const transcribeLiveChunk = async ({ meetingId, blob, offsetSeconds }) => {
+  requireApiUrl();
+  const formData = new FormData();
+  formData.append("meetingId", meetingId);
+  formData.append("offsetSeconds", String(offsetSeconds));
+  formData.append("audio", blob, `live-${Date.now()}.webm`);
+
+  const { data } = await api.post("/meeting/live-chunk", formData, {
+    timeout: 60 * 1000
+  });
+  return data.data.segments;
+};

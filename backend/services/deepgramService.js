@@ -45,6 +45,50 @@ export const transcribeRecordingUrl = async (audioUrl) => {
   };
 };
 
+export const createTemporaryDeepgramToken = async () => {
+  const { result, error } = await getDeepgram().auth.grantToken();
+
+  if (error || !result?.access_token) {
+    throw new AppError(
+      "Failed to create a temporary Deepgram live token.",
+      502,
+      error?.message || "Deepgram returned no access token."
+    );
+  }
+
+  return {
+    token: result.access_token,
+    expiresIn: result.expires_in
+  };
+};
+
+export const transcribeLiveChunk = async ({ buffer, offsetSeconds = 0 }) => {
+  const { result, error } = await getDeepgram().listen.prerecorded.transcribeFile(buffer, {
+    model: "nova-2",
+    smart_format: true,
+    punctuate: true,
+    diarize: true,
+    utterances: true
+  });
+
+  if (error) {
+    throw new AppError("Deepgram live chunk transcription failed.", 502, error.message);
+  }
+
+  return normalizeUtterances(result?.results?.utterances ?? []).map((segment) => {
+    const start = segment.start + offsetSeconds;
+    const end = segment.end + offsetSeconds;
+    return {
+      ...segment,
+      id: `${segment.id}-${Math.round(offsetSeconds * 1000)}`,
+      start,
+      end,
+      timestamp: new Date(start * 1000).toISOString().slice(14, 19),
+      isFinal: true
+    };
+  });
+};
+
 export const createLiveDeepgramConnection = ({ onTranscript, onError, onClose }) => {
   if (!env.DEEPGRAM_API_KEY) {
     throw new AppError("Deepgram API key is required for live meetings.", 500);

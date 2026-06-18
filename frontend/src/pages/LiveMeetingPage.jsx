@@ -6,7 +6,16 @@ import { useLiveMeeting } from "../hooks/useLiveMeeting";
 
 export const LiveMeetingPage = () => {
   const [title, setTitle] = useState("");
-  const { meeting, segments, status, error, start, stop, liveMeetingEnabled } = useLiveMeeting();
+  const {
+    meeting,
+    segments,
+    status,
+    error,
+    start,
+    stop,
+    liveMeetingEnabled,
+    transcriptionMode
+  } = useLiveMeeting();
   const recording = ["starting", "recording"].includes(status);
 
   return (
@@ -53,6 +62,7 @@ export const LiveMeetingPage = () => {
           <div className="session-status">
             <span>Status</span>
             <strong>{status}</strong>
+            {transcriptionMode ? <small>{transcriptionMode}</small> : null}
             {meeting?.id ? <small>{meeting.id}</small> : null}
           </div>
         </section>
