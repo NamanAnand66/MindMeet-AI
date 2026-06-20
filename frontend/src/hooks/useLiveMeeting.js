@@ -4,7 +4,7 @@ import {
   endLiveMeeting,
   getLiveMeetingToken,
   startLiveMeeting,
-  transcribeLiveChunk
+  transcribeLiveChunk,
 } from "../services/api";
 
 const createDeepgramUrl = () => {
@@ -14,12 +14,13 @@ const createDeepgramUrl = () => {
     punctuate: "true",
     interim_results: "true",
     diarize: "true",
-    utterance_end_ms: "1000"
+    utterance_end_ms: "1000",
   });
   return `wss://api.deepgram.com/v1/listen?${params.toString()}`;
 };
 
-const timestamp = (seconds) => new Date(seconds * 1000).toISOString().slice(14, 19);
+const timestamp = (seconds) =>
+  new Date(seconds * 1000).toISOString().slice(14, 19);
 
 const normalizeDeepgramTranscript = (payload) => {
   if (payload.type !== "Results") return null;
@@ -40,7 +41,7 @@ const normalizeDeepgramTranscript = (payload) => {
     end,
     timestamp: timestamp(start),
     text: transcript,
-    isFinal: Boolean(payload.is_final)
+    isFinal: Boolean(payload.is_final),
   };
 };
 
@@ -78,7 +79,7 @@ export const useLiveMeeting = () => {
     try {
       const completedMeeting = await endLiveMeeting({
         meetingId: meetingRef.current.id,
-        segments: segmentsRef.current
+        segments: segmentsRef.current,
       });
       setMeeting(completedMeeting);
       setStatus("completed");
@@ -88,14 +89,17 @@ export const useLiveMeeting = () => {
     }
   };
 
-  useEffect(() => () => {
-    releaseMedia();
-    socketRef.current?.close();
-    window.clearTimeout(chunkTimerRef.current);
-    if (meetingRef.current && !finalizedRef.current) {
-      void cancelLiveMeeting(meetingRef.current.id);
-    }
-  }, []);
+  useEffect(
+    () => () => {
+      releaseMedia();
+      socketRef.current?.close();
+      window.clearTimeout(chunkTimerRef.current);
+      if (meetingRef.current && !finalizedRef.current) {
+        void cancelLiveMeeting(meetingRef.current.id);
+      }
+    },
+    [],
+  );
 
   const startDeepgram = ({ stream, token }) => {
     const socket = new WebSocket(createDeepgramUrl(), ["token", token]);
@@ -178,26 +182,109 @@ export const useLiveMeeting = () => {
           const request = transcribeLiveChunk({
             meetingId: meetingRef.current.id,
             blob,
-            offsetSeconds
+            offsetSeconds,
           })
             .then((chunkSegments) => {
-              const merged = [...segmentsRef.current, ...chunkSegments]
-                .sort((a, b) => a.start - b.start);
+              const merged = [...segmentsRef.current, ...chunkSegments].sort(
+                (a, b) => a.start - b.start,
+              );
               segmentsRef.current = merged;
               setSegments(merged);
             })
             .catch((chunkError) => {
-              setError(chunkError.response?.data?.message || chunkError.message);
+              setError(
+                chunkError.response?.data?.message || chunkError.message,
+              );
             });
           pendingChunksRef.current.push(request);
         }
 
         if (stopRequestedRef.current) {
-          void Promise.allSettled(pendingChunksRef.current).then(finalizeMeeting);
+          void Promise.allSettled(pendingChunksRef.current).then(
+            finalizeMeeting,
+          );
         }
       };
+
+      recorder.start();
+      chunkTimerRef.current = window.setTimeout(() => {
+        if (recorder.state === "recording") recorder.stop();
+      }, 4000);
+    };
+
+    startedAtRef.current = Date.now();
+    setTranscriptionMode("Deepgram Vercel stream");
+    setStatus("recording");
+    recordChunk();
+  };
+
+  const start = async (title) => {
+    setError("");
+    setSegments([]);
+    setTranscriptionMode("");
+    segmentsRef.current = [];
+    pendingChunksRef.current = [];
+    chunkOffsetRef.current = 0;
+    stopRequestedRef.current = false;
+    finalizedRef.current = false;
+    setStatus("starting");
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      let tokenData;
+      try {
+        tokenData = await getLiveMeetingToken();
+      } catch {
+        tokenData = null;
+      }
+
+      const preparedMeeting = await startLiveMeeting(title || "Live meeting");
+      meetingRef.current = preparedMeeting;
+      setMeeting(preparedMeeting);
+
+      if (tokenData?.token) {
+        startDeepgram({ stream, token: tokenData.token });
+      } else {
+        startChunkedDeepgram(stream);
+      }
+    } catch (startError) {
+      releaseMedia();
+      if (meetingRef.current && !finalizedRef.current) {
+        void cancelLiveMeeting(meetingRef.current.id);
+      }
+      const permissionDenied = startError?.name === "NotAllowedError";
+      setError(
+        permissionDenied
+          ? "Microphone permission was denied. Allow microphone access and try again."
+          : startError.response?.data?.message ||
+              startError.message ||
+              "Unable to start the live meeting.",
+      );
+      setStatus("error");
+    }
+  };
+
+  const stop = () => {
+    stopRequestedRef.current = true;
+    setStatus("finalizing");
+
+    if (recorderRef.current?.state === "recording") {
+      window.clearTimeout(chunkTimerRef.current);
+      recorderRef.current.stop();
+    } else {
+      void finalizeMeeting();
+    }
+    releaseMedia();
+  };
+
+  return {
+    meeting,
+    segments,
+    status,
+    error,
+    start,
     stop,
     liveMeetingEnabled: true,
-    transcriptionMode
+    transcriptionMode,
   };
 };
