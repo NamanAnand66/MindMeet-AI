@@ -68,52 +68,5 @@ create table if not exists public.transcript_chunks (
 
 create index if not exists transcript_chunks_embedding_idx
 on public.transcript_chunks using ivfflat (embedding vector_cosine_ops)
-with (lists = 100);
-
-create index if not exists transcript_chunks_meeting_id_idx on public.transcript_chunks(meeting_id);
-create index if not exists meetings_created_at_idx on public.meetings(created_at desc);
-create index if not exists action_items_meeting_id_idx on public.action_items(meeting_id);
-
-create or replace function public.set_updated_at()
-returns trigger as $$
-begin
-  new.updated_at = now();
-  return new;
-end;
-$$ language plpgsql;
-
-drop trigger if exists meetings_set_updated_at on public.meetings;
-create trigger meetings_set_updated_at
-before update on public.meetings
-for each row execute function public.set_updated_at();
-
-drop trigger if exists action_items_set_updated_at on public.action_items;
-create trigger action_items_set_updated_at
-before update on public.action_items
-for each row execute function public.set_updated_at();
-
-create or replace function public.match_transcript_chunks(
-  query_embedding vector(1536),
-  match_count int default 6,
-  filter_meeting_id uuid default null
-)
-returns table (
-  id uuid,
-  meeting_id uuid,
-  chunk_index integer,
-  content text,
-  similarity float
-)
-language sql stable
-as $$
-  select
-    transcript_chunks.id,
-    transcript_chunks.meeting_id,
-    transcript_chunks.chunk_index,
-    transcript_chunks.content,
-    1 - (transcript_chunks.embedding <=> query_embedding) as similarity
-  from public.transcript_chunks
-  where filter_meeting_id is null or transcript_chunks.meeting_id = filter_meeting_id
-  order by transcript_chunks.embedding <=> query_embedding
-  limit match_count;
+with (li
 $$;
